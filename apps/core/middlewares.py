@@ -7,7 +7,7 @@ from django.urls import reverse
 logger = logging.getLogger(__name__)
 
 """Define the path for the log file."""
-LOG_FILE_PATH = 'utility.info.log'
+LOG_FILE_PATH = '.utility/info.log'
 
 """Configure logging with the specified log file, log level, and format."""
 logging.basicConfig(filename=LOG_FILE_PATH, level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -38,7 +38,7 @@ class LogRequiredMiddleware:
                 f"Error {response.status_code} occurred for URL: {request.path}. "
                 f"Method: {request.method}. User: {request.user}")
             messages.warning(request, 'An error occurred. Please try again.', extra_tags='error')
-            return HttpResponseRedirect(reverse('home'))
+            return HttpResponseRedirect(reverse('cdr_search'))
 
         logger.info(
             f"Request for URL: {request.path}. Method: {request.method}. User: {request.user}. "
