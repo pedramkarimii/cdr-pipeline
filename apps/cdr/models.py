@@ -38,3 +38,6 @@ class Cdr(models.Model):
         ]
         verbose_name = "Call Detail Record"
         verbose_name_plural = "Call Detail Records"
+        constraints = [
+            models.UniqueConstraint(fields=['src_number', 'dest_number'], name='unique_src_dest_numbers')
+        ]
