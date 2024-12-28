@@ -87,8 +87,8 @@ class RabbitMQProducer:
 
 def generate_cdr():
     """Generate a random Call Detail Record (CDR)."""
-    src_number = f"0912{random.randint(100000, 999999)}"
-    dest_number = f"0912{random.randint(100000, 999999)}"
+    src_number = f"0912{random.randint(1000000, 9999999)}"
+    dest_number = f"0912{random.randint(1000000, 9999999)}"
     call_duration = random.randint(1, 60000)
     call_successful = random.choice([True, False])
     start_time = (datetime.now() - timedelta(seconds=random.randint(0, 86400))).isoformat()
