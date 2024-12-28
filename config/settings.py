@@ -38,8 +38,8 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
-if not DEBUG:
-    MIDDLEWARE.append('apps.core.middlewares.LoginRequiredMiddleware')
+if DEBUG:
+    MIDDLEWARE.append('apps.core.middlewares.LogRequiredMiddleware')
 
 TEMPLATES = [
     {
@@ -120,7 +120,7 @@ SPECTACULAR_SETTINGS = {
     'VERSION': '1.0.0',
 }
 # Applications
-APPLICATIONS = ["cdr", ]
+APPLICATIONS = ["cdr", "core"]
 
 # Serving
 STATIC_URL = "storage/static/"
@@ -141,15 +141,6 @@ ELASTICSEARCH_DSL = {
         'hosts': config('ELASTICSEARCH_HOST', default='http://localhost:9200')
     },
 }
-ELASTICSEARCH_DSL['default'].update({
-    'TIMEOUT': 60,
-    'RETRY_ON_TIMEOUT': True,
-    'MAX_RETRIES': 3,
-})
-ELASTICSEARCH_INDEX_SETTINGS = {
-    'number_of_shards': 4,
-    'number_of_replicas': 0,
-}
 
 # Mode Handling:
 if DEBUG:
@@ -165,6 +156,7 @@ if DEBUG:
         "rest_framework",
         "rest_framework.authtoken",
         "drf_spectacular",
+        "django_elasticsearch_dsl",
         # Application
         *list(map(lambda app: f"apps.{app}", APPLICATIONS)),
     ]
@@ -194,6 +186,8 @@ else:
         "django.contrib.contenttypes",
         # Third-party
         "rest_framework",
+        "rest_framework.authtoken",
+        "django_elasticsearch_dsl",
         # Application
         *list(map(lambda app: f"apps.{app}", APPLICATIONS)),
     ]
