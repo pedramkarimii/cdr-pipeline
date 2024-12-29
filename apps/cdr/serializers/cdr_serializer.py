@@ -20,6 +20,18 @@ class CdrSearchSerializer(serializers.Serializer):
             "invalid": "The dest number field must be a valid phone number.",
         },
     )
+    start_time = serializers.DateTimeField(
+        required=False,
+        error_messages={
+            "invalid": "The start time field must be a valid date-time.",
+        },
+    )
+    end_time = serializers.DateTimeField(
+        required=False,
+        error_messages={
+            "invalid": "The end time field must be a valid date-time.",
+        },
+    )
     call_duration = serializers.IntegerField(
         required=False,
         error_messages={

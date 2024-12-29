@@ -26,7 +26,7 @@ class CDRSearchView(APIView):
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = 'default'
 
-    ALLOWED_PARAMETERS = ['src_number', 'dest_number', 'call_successful', 'call_duration']
+    ALLOWED_PARAMETERS = ['src_number', 'dest_number', 'start_time', 'end_time', 'call_successful', 'call_duration']
 
     def get(self, request):
         """
@@ -42,9 +42,7 @@ class CDRSearchView(APIView):
         - Response: A list of filtered CDRs or error message.
         """
         params = request.GET.dict()
-        print(params)
         invalid_params = [key for key in params.keys() if key not in self.ALLOWED_PARAMETERS]
-        print(invalid_params)
         if invalid_params:
             return Response(
                 {"error": f"Invalid parameter(s): {', '.join(invalid_params)}"},
@@ -62,10 +60,12 @@ class CDRSearchView(APIView):
 
             src_number = validated_data.get('src_number')
             dest_number = validated_data.get('dest_number')
+            start_time = validated_data.get('start_time')
+            end_time = validated_data.get('end_time')
             call_successful = validated_data.get('call_successful')
             call_duration = validated_data.get('call_duration')
 
-            query = self.build_query(src_number, dest_number, call_successful, call_duration)
+            query = self.build_query(src_number, dest_number, start_time, end_time, call_successful, call_duration)
 
             try:
                 response = es.search(index="cdrs", body=query)
@@ -79,7 +79,7 @@ class CDRSearchView(APIView):
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    def build_query(self, src_number, dest_number, call_successful, call_duration):
+    def build_query(self, src_number, dest_number, start_time, end_time, call_successful, call_duration):
         """
         Builds the Elasticsearch query based on provided filters.
 
@@ -93,14 +93,16 @@ class CDRSearchView(APIView):
         - dict: The Elasticsearch query with appropriate filters.
         """
         query = {"query": {"bool": {"filter": []}}}
-
         if src_number:
             query["query"]["bool"]["filter"].append({"match": {"src_number": src_number}})
         if dest_number:
             query["query"]["bool"]["filter"].append({"match": {"dest_number": dest_number}})
+        if start_time:
+            query["query"]["bool"]["filter"].append({"range": {"start_time": {"gte": start_time}}})
+        if end_time:
+            query["query"]["bool"]["filter"].append({"range": {"end_time": {"lte": end_time}}})
         if call_successful is not None:
             query["query"]["bool"]["filter"].append({"term": {"call_successful": call_successful}})
         if call_duration:
             query["query"]["bool"]["filter"].append({"term": {"call_duration": call_duration}})
-
         return query
