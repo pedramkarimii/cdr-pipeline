@@ -4,19 +4,26 @@ import json
 from django.utils.dateparse import parse_datetime
 from apps.cdr.models import Cdr
 from django.utils import timezone
+from urllib.parse import urlparse
 
 
 class RabbitMQConsumer:
-    def __init__(self, queue_prefix, shard_count, host='localhost', port=5672, username='guest', password='guest'):
+    def __init__(self, queue_prefix, shard_count, url='amqps://pdtwxisb:JSRKhYIwoER7i99A1BjqP1CRQstZvTr7@possum.lmq.cloudamqp.com/pdtwxisb', host='localhost', port=5672, username='guest',
+                 password='guest', virtual_host='/', max_retries=5, retry_delay=2):
+
         """
         Initialize the RabbitMQConsumer with connection parameters and shard configuration.
         """
         self.queue_prefix = queue_prefix
         self.shard_count = shard_count
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
+        self.url = url
         self.host = host
         self.port = port
         self.username = username
         self.password = password
+        self.virtual_host = virtual_host
         self.connection = None
         self.channel = None
 
@@ -24,7 +31,12 @@ class RabbitMQConsumer:
         """Establish connection to RabbitMQ."""
         credentials = pika.PlainCredentials(self.username, self.password)
         self.connection = pika.BlockingConnection(
-            pika.ConnectionParameters(host=self.host, port=self.port, credentials=credentials)
+            pika.ConnectionParameters(
+                host=self.host,
+                port=self.port,
+                credentials=credentials,
+                virtual_host=self.virtual_host
+            )
         )
         self.channel = self.connection.channel()
 

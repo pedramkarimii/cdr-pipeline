@@ -1,3 +1,4 @@
+from apps.core import os_setting_elastic
 import pika
 import json
 import random
@@ -7,11 +8,10 @@ import hashlib
 
 
 class RabbitMQProducer:
-    """RabbitMQProducer class handles the creation of a RabbitMQ connection, shard-based message routing,
-     and message publishing with retry logic."""
-
-    def __init__(self, queue_prefix, shard_count, host='localhost', port=5672, username='guest', password='guest',
-                 max_retries=5, retry_delay=2):
+    def __init__(self, queue_prefix, shard_count,
+                 url='amqps://pdtwxisb:JSRKhYIwoER7i99A1BjqP1CRQstZvTr7@possum.lmq.cloudamqp.com/pdtwxisb',
+                 host='localhost', port=5672, username='guest',
+                 password='guest', virtual_host='/', max_retries=5, retry_delay=2):
         """
         Initialize the RabbitMQProducer with connection parameters, shard configuration, and retry settings.
 
@@ -25,10 +25,12 @@ class RabbitMQProducer:
         self.shard_count = shard_count
         self.max_retries = max_retries
         self.retry_delay = retry_delay
+        self.url = url
         self.host = host
         self.port = port
         self.username = username
         self.password = password
+        self.virtual_host = virtual_host
         self.connection = None
         self.channel = None
 
@@ -36,14 +38,19 @@ class RabbitMQProducer:
         """Establish connection to RabbitMQ."""
         credentials = pika.PlainCredentials(self.username, self.password)
         self.connection = pika.BlockingConnection(
-            pika.ConnectionParameters(host=self.host, port=self.port, credentials=credentials)
+            pika.ConnectionParameters(
+                host=self.host,
+                port=self.port,
+                credentials=credentials,
+                virtual_host=self.virtual_host
+            )
         )
         self.channel = self.connection.channel()
 
         for shard_id in range(self.shard_count):
             queue_name = f"{self.queue_prefix}_{shard_id}"
             self.channel.queue_declare(queue=queue_name, durable=True)
-        print(f"Connected to RabbitMQ at {self.host}:{self.port}")
+        print(f"Connected to RabbitMQ at {self.host}:{self.port} with virtual host {self.virtual_host}")
 
     def _get_shard_id(self, src_number):
         """Calculate shard ID based on src_number."""
@@ -91,9 +98,9 @@ def generate_cdr():
     dest_number = f"0912{random.randint(1000000, 9999999)}"
     call_duration = random.randint(1, 60000)
     call_successful = random.choice([True, False])
-    start_time = (datetime.now() - timedelta(seconds=random.randint(0, 86400))).isoformat()
-    end_time = (datetime.now() - timedelta(seconds=random.randint(0, 86400))).isoformat()
-    timestamp = (datetime.now() - timedelta(seconds=random.randint(0, 86400))).isoformat()
+    start_time = (datetime.now() - timedelta(seconds=random.randint(0, 8640000000))).isoformat()
+    end_time = (datetime.now() - timedelta(seconds=random.randint(0, 8640000000))).isoformat()
+    timestamp = (datetime.now() - timedelta(seconds=random.randint(0, 8640000000))).isoformat()
 
     return {
         "src_number": src_number,
@@ -124,7 +131,7 @@ if __name__ == "__main__":
                     end_time = time.time()
                     elapsed_time = end_time - start_time
                     print(f"Sent {message_count} messages. Time taken: {elapsed_time:.2f} seconds.")
-                    time.sleep(0.22)
+                    time.sleep(0.1)
             break
 
     except KeyboardInterrupt:
