@@ -7,7 +7,7 @@ from django.urls import reverse
 logger = logging.getLogger(__name__)
 
 """Define the path for the log file."""
-LOG_FILE_PATH = '.utility/info.log'
+LOG_FILE_PATH = './utility/info.log'
 
 """Configure logging with the specified log file, log level, and format."""
 logging.basicConfig(filename=LOG_FILE_PATH, level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
