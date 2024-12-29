@@ -3,8 +3,6 @@ from django_elasticsearch_dsl import Document
 from django_elasticsearch_dsl.registries import registry
 from apps.cdr.models import Cdr
 from elasticsearch.helpers import bulk
-import random
-from datetime import datetime, timedelta
 
 es = Elasticsearch([{'scheme': 'http', 'host': 'localhost', 'port': 9200}])
 
@@ -18,8 +16,20 @@ class CdrDocument(Document):
         """Define settings for the Elasticsearch index."""
         name = 'cdrs'
         settings = {
-            'number_of_shards': 2,
+            'number_of_shards': 1,
             'number_of_replicas': 1
+        }
+        mapping = {
+            'properties': {
+                'src_number': {'type': 'keyword'},
+                'dest_number': {'type': 'keyword'},
+                'call_duration': {'type': 'integer'},
+                'start_time': {'type': 'date'},
+                'end_time': {'type': 'date'},
+                'timestamp': {'enabled': False},
+                'call_successful': {'type': 'boolean'}
+            }
+
         }
 
     class Django:
@@ -41,8 +51,6 @@ class CdrDocument(Document):
         auto_refresh = True
         related_models = [Cdr]
         queryset_pagination = 10000
-        index = 'cdrs'
-        index_settings = {'number_of_shards': 2, 'number_of_replicas': 1}
         index_analyzers = {
             'custom_analyzer': {
                 'tokenizer': 'standard',
