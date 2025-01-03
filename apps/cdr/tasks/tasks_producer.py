@@ -1,56 +1,18 @@
-from apps.core import os_setting_elastic
+from apps.core import os_setting_elastic  # noqa
+from apps.cdr.tasks.tasks_main import RabbitMQMain
 import pika
 import json
-import random
-from datetime import datetime, timedelta
 import time
 import hashlib
 
 
-class RabbitMQProducer:
-    def __init__(self, queue_prefix, shard_count,
-                 url='amqps://pdtwxisb:JSRKhYIwoER7i99A1BjqP1CRQstZvTr7@possum.lmq.cloudamqp.com/pdtwxisb',
-                 host='localhost', port=5672, username='guest',
-                 password='guest', virtual_host='/', max_retries=5, retry_delay=2):
-        """
-        Initialize the RabbitMQProducer with connection parameters, shard configuration, and retry settings.
-
-        queue_prefix: The base name for the queues.
-        shard_count: Number of shards (queues) to be created.
-        max_retries: Maximum number of retries for failed messages.
-        retry_delay: Initial delay between retry attempts (in seconds).
-        host, port, username, password: RabbitMQ connection parameters.
-        """
-        self.queue_prefix = queue_prefix
-        self.shard_count = shard_count
-        self.max_retries = max_retries
-        self.retry_delay = retry_delay
-        self.url = url
-        self.host = host
-        self.port = port
-        self.username = username
-        self.password = password
-        self.virtual_host = virtual_host
-        self.connection = None
-        self.channel = None
-
-    def connect(self):
-        """Establish connection to RabbitMQ."""
-        credentials = pika.PlainCredentials(self.username, self.password)
-        self.connection = pika.BlockingConnection(
-            pika.ConnectionParameters(
-                host=self.host,
-                port=self.port,
-                credentials=credentials,
-                virtual_host=self.virtual_host
-            )
-        )
-        self.channel = self.connection.channel()
-
-        for shard_id in range(self.shard_count):
-            queue_name = f"{self.queue_prefix}_{shard_id}"
-            self.channel.queue_declare(queue=queue_name, durable=True)
-        print(f"Connected to RabbitMQ at {self.host}:{self.port} with virtual host {self.virtual_host}")
+class RabbitMQProducer(RabbitMQMain):
+    """
+    This class is responsible for producing and publishing messages to RabbitMQ queues.
+     It calculates the shard (queue) to which the message will be published based on the source number (src_number).
+    The class also includes retry logic that allows
+     the producer to retry message publishing if it fails due to temporary issues.
+    """
 
     def _get_shard_id(self, src_number):
         """Calculate shard ID based on src_number."""
@@ -84,58 +46,3 @@ class RabbitMQProducer:
                 self.retry_delay *= 2
 
         print(f"Failed to publish message after {self.max_retries} retries. Sending to DLX (if configured).")
-
-    def close_connection(self):
-        """Close the RabbitMQ connection."""
-        if self.connection:
-            self.connection.close()
-            print("Connection closed.")
-
-
-def generate_cdr():
-    """Generate a random Call Detail Record (CDR)."""
-    src_number = f"0912{random.randint(1000000, 9999999)}"
-    dest_number = f"0912{random.randint(1000000, 9999999)}"
-    call_duration = random.randint(1, 60000)
-    call_successful = random.choice([True, False])
-    start_time = (datetime.now() - timedelta(seconds=random.randint(0, 8640000000))).isoformat()
-    end_time = (datetime.now() - timedelta(seconds=random.randint(0, 8640000000))).isoformat()
-    timestamp = (datetime.now() - timedelta(seconds=random.randint(0, 8640000000))).isoformat()
-
-    return {
-        "src_number": src_number,
-        "dest_number": dest_number,
-        "call_duration": call_duration,
-        "call_successful": call_successful,
-        "start_time": start_time,
-        "end_time": end_time,
-        "timestamp": timestamp
-    }
-
-
-if __name__ == "__main__":
-    """Initialize the producer with queue prefix 'cdr_queue' and 2 shards"""
-    producer = RabbitMQProducer(queue_prefix='cdr_queue', shard_count=2)
-    producer.connect()
-
-    message_count = 0
-    start_time = time.time()
-
-    try:
-        while True:
-            for _ in range(500):
-                cdr = generate_cdr()
-                producer.publish_message(cdr)
-                message_count += 1
-                if message_count % 100 == 0:
-                    end_time = time.time()
-                    elapsed_time = end_time - start_time
-                    print(f"Sent {message_count} messages. Time taken: {elapsed_time:.2f} seconds.")
-                    time.sleep(0.1)
-            break
-
-    except KeyboardInterrupt:
-        producer.close_connection()
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-        print(f"Total messages sent: {message_count}, Time taken: {elapsed_time:.2f} seconds.")
