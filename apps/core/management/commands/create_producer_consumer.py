@@ -1,7 +1,8 @@
 import time
 from urllib.parse import urlparse
 from django.core.management.base import BaseCommand
-from apps.cdr.tasks.tasks_producer import RabbitMQProducer, generate_cdr
+from apps.cdr.tasks.tasks_main import generate_cdr
+from apps.cdr.tasks.tasks_producer import RabbitMQProducer
 from apps.cdr.tasks.tasks_consumer import RabbitMQConsumer
 
 
@@ -117,7 +118,6 @@ class Command(BaseCommand):
                 if message_count % 100 == 0:
                     elapsed_time = time.time() - start_time
                     self.stdout.write(f"Sent {message_count} messages. Time taken: {elapsed_time:.2f} seconds.")
-                    time.sleep(0.1)
 
         except KeyboardInterrupt:
             self.stdout.write(f"Process interrupted. {message_count} messages sent.")
