@@ -1,7 +1,8 @@
 from rest_framework.views import APIView
+from drf_spectacular.utils import OpenApiResponse, OpenApiTypes, extend_schema
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
@@ -9,6 +10,18 @@ from apps.cdr.serializers.cdr_serializer import CdrSearchSerializer
 from apps.core.os_setting_elastic import es
 
 
+@extend_schema(
+    parameters=[CdrSearchSerializer],
+    responses={
+        200: OpenApiTypes.OBJECT,
+        400: OpenApiResponse(description="Invalid query parameters."),
+        401: OpenApiResponse(
+            description="Authentication credentials were not provided."
+        ),
+        404: OpenApiResponse(description="No matching CDRs found."),
+        500: OpenApiResponse(description="Search service unavailable."),
+    },
+)
 class CDRSearchView(APIView):
     """
     This view allows querying of Call Detail Records (CDRs) in Elasticsearch.
@@ -20,13 +33,21 @@ class CDRSearchView(APIView):
     - call_successful: (str) Whether the call was successful, should be 'true' or 'false'.
     - call_duration: (int) The minimum call duration (in seconds) to filter CDRs.
     """
+
     authentication_classes = [JWTAuthentication]
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     throttle_classes = [ScopedRateThrottle]
-    throttle_scope = 'default'
+    throttle_scope = "default"
 
-    ALLOWED_PARAMETERS = ['src_number', 'dest_number', 'start_time', 'end_time', 'call_successful', 'call_duration']
+    ALLOWED_PARAMETERS = [
+        "src_number",
+        "dest_number",
+        "start_time",
+        "end_time",
+        "call_successful",
+        "call_duration",
+    ]
 
     def get(self, request):
         """
@@ -42,11 +63,13 @@ class CDRSearchView(APIView):
         - Response: A list of filtered CDRs or error message.
         """
         params = request.GET.dict()
-        invalid_params = [key for key in params.keys() if key not in self.ALLOWED_PARAMETERS]
+        invalid_params = [
+            key for key in params.keys() if key not in self.ALLOWED_PARAMETERS
+        ]
         if invalid_params:
             return Response(
                 {"error": f"Invalid parameter(s): {', '.join(invalid_params)}"},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
         serializer = CdrSearchSerializer(data=request.GET)
         if serializer.is_valid():
@@ -55,31 +78,51 @@ class CDRSearchView(APIView):
             if not validated_data:
                 return Response(
                     {"error": "No valid parameters provided for search"},
-                    status=status.HTTP_400_BAD_REQUEST
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            src_number = validated_data.get('src_number')
-            dest_number = validated_data.get('dest_number')
-            start_time = validated_data.get('start_time')
-            end_time = validated_data.get('end_time')
-            call_successful = validated_data.get('call_successful')
-            call_duration = validated_data.get('call_duration')
+            src_number = validated_data.get("src_number")
+            dest_number = validated_data.get("dest_number")
+            start_time = validated_data.get("start_time")
+            end_time = validated_data.get("end_time")
+            call_successful = validated_data.get("call_successful")
+            call_duration = validated_data.get("call_duration")
 
-            query = self.build_query(src_number, dest_number, start_time, end_time, call_successful, call_duration)
+            query = self.build_query(
+                src_number,
+                dest_number,
+                start_time,
+                end_time,
+                call_successful,
+                call_duration,
+            )
 
             try:
                 response = es.search(index="cdrs", body=query)
                 hits = response.get("hits", {}).get("hits", [])
                 if not hits:
-                    return Response({"message": "No results found."}, status=status.HTTP_404_NOT_FOUND)
+                    return Response(
+                        {"message": "No results found."},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
                 cdrs = [hit["_source"] for hit in hits]
                 return Response(cdrs, status=status.HTTP_200_OK)
             except Exception as e:
-                return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                return Response(
+                    {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    def build_query(self, src_number, dest_number, start_time, end_time, call_successful, call_duration):
+    def build_query(
+        self,
+        src_number,
+        dest_number,
+        start_time,
+        end_time,
+        call_successful,
+        call_duration,
+    ):
         """
         Builds the Elasticsearch query based on provided filters.
 
@@ -94,15 +137,27 @@ class CDRSearchView(APIView):
         """
         query = {"query": {"bool": {"filter": []}}}
         if src_number:
-            query["query"]["bool"]["filter"].append({"match": {"src_number": src_number}})
+            query["query"]["bool"]["filter"].append(
+                {"match": {"src_number": src_number}}
+            )
         if dest_number:
-            query["query"]["bool"]["filter"].append({"match": {"dest_number": dest_number}})
+            query["query"]["bool"]["filter"].append(
+                {"match": {"dest_number": dest_number}}
+            )
         if start_time:
-            query["query"]["bool"]["filter"].append({"range": {"start_time": {"gte": start_time}}})
+            query["query"]["bool"]["filter"].append(
+                {"range": {"start_time": {"gte": start_time}}}
+            )
         if end_time:
-            query["query"]["bool"]["filter"].append({"range": {"end_time": {"lte": end_time}}})
+            query["query"]["bool"]["filter"].append(
+                {"range": {"end_time": {"lte": end_time}}}
+            )
         if call_successful is not None:
-            query["query"]["bool"]["filter"].append({"term": {"call_successful": call_successful}})
+            query["query"]["bool"]["filter"].append(
+                {"term": {"call_successful": call_successful}}
+            )
         if call_duration:
-            query["query"]["bool"]["filter"].append({"term": {"call_duration": call_duration}})
+            query["query"]["bool"]["filter"].append(
+                {"term": {"call_duration": call_duration}}
+            )
         return query

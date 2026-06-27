@@ -1,0 +1,30 @@
+# Environment
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Django runtime
+*.sqlite3
+logs/
+storage/media/
+storage/static_collected/
+utility/cache/
+celery_worker_state
+
+# Tooling and editor files
+.idea/
+.vscode/
+.DS_Store
+storage/
+.coverage
+htmlcov/

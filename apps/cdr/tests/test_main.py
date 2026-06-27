@@ -1,27 +1,26 @@
 import unittest
-from _pydatetime import timedelta
 from unittest.mock import MagicMock, patch
 import pika
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from apps.cdr.tasks.tasks_main import RabbitMQMain, generate_cdr
 
 
 class TestRabbitMQMain(unittest.TestCase):
-
     def setUp(self):
         """Setup the test environment for RabbitMQMain class."""
-        self.queue_prefix = 'cdr_queue'
+        self.queue_prefix = "cdr_queue"
         self.shard_count = 2
         self.rabbitmq = RabbitMQMain(
             queue_prefix=self.queue_prefix,
             shard_count=self.shard_count,
-            url='amqps://user:password@localhost:5672/test'
+            url="amqp://guest:guest@rabbitmq:5672/%2F",
+            retry_delay=0,
         )
         self.rabbitmq.connection = MagicMock()
         self.rabbitmq.channel = MagicMock()
 
-    @patch('pika.BlockingConnection')
+    @patch("pika.BlockingConnection")
     def test_connect_success(self, MockConnection):
         """Test that RabbitMQ connection is established successfully."""
         mock_connection = MagicMock()
@@ -33,21 +32,27 @@ class TestRabbitMQMain(unittest.TestCase):
 
         for shard_id in range(self.shard_count):
             queue_name = f"{self.queue_prefix}_{shard_id}"
-            self.rabbitmq.channel.queue_declare.assert_any_call(queue=queue_name, durable=True)
+            self.rabbitmq.channel.queue_declare.assert_any_call(
+                queue=queue_name, durable=True
+            )
 
-    @patch('pika.BlockingConnection')
+    @patch("pika.BlockingConnection")
     def test_connect_retry_on_failure(self, MockConnection):
         """Test that the connection retries on failure."""
-        MockConnection.side_effect = pika.exceptions.AMQPConnectionError("Connection error")
+        MockConnection.side_effect = pika.exceptions.AMQPConnectionError(
+            "Connection error"
+        )
 
         self.rabbitmq.connect()
 
         self.assertEqual(MockConnection.call_count, self.rabbitmq.max_retries)
 
-    @patch('pika.BlockingConnection')
+    @patch("pika.BlockingConnection")
     def test_connect_max_retries_exceeded(self, MockConnection):
         """Test that the connection fails after max retries."""
-        MockConnection.side_effect = pika.exceptions.AMQPConnectionError("Connection error")
+        MockConnection.side_effect = pika.exceptions.AMQPConnectionError(
+            "Connection error"
+        )
 
         self.rabbitmq.connect()
 
@@ -72,14 +77,15 @@ class TestRabbitMQMain(unittest.TestCase):
     def test_close_connection_error(self):
         """Test error when closing connection."""
         self.rabbitmq.connection.is_open = True
-        self.rabbitmq.connection.close.side_effect = Exception("Connection close failed")
+        self.rabbitmq.connection.close.side_effect = Exception(
+            "Connection close failed"
+        )
 
         with self.assertRaises(Exception):
             self.rabbitmq.close_connection()
 
 
 class TestGenerateCDR(unittest.TestCase):
-
     def test_generate_cdr_structure(self):
         """Test that the generate_cdr function returns a dictionary with the correct keys."""
         cdr = generate_cdr()
@@ -109,9 +115,18 @@ class TestGenerateCDR(unittest.TestCase):
             self.fail("Generated CDR contains invalid ISO datetime format")
 
     def test_generate_cdr_timestamp(self):
-        """Test that the timestamp is within the expected range (i.e., a recent timestamp)."""
+        """Test that generated CDR times are timezone-aware and internally consistent."""
         cdr = generate_cdr()
 
+        start_time = datetime.fromisoformat(cdr["start_time"])
+        end_time = datetime.fromisoformat(cdr["end_time"])
         timestamp = datetime.fromisoformat(cdr["timestamp"])
 
-        self.assertTrue(abs(datetime.now() - timestamp) < timedelta(days=100).total_seconds())
+        self.assertIsNotNone(start_time.tzinfo)
+        self.assertIsNotNone(end_time.tzinfo)
+        self.assertIsNotNone(timestamp.tzinfo)
+        self.assertEqual(end_time, timestamp)
+        self.assertEqual(
+            end_time - start_time,
+            timedelta(seconds=cdr["call_duration"]),
+        )
