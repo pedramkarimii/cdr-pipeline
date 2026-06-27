@@ -21,11 +21,13 @@ django-celery-results = "^2.5.1"
 django-elasticsearch-dsl = "^8.0"
 
 
+gunicorn = "^23.0.0"
+redis = ">=5.0,<7"
+
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.8.4"
 pre-commit = "^4.0.1"
 drf-yasg = "^1.21.8"
-gunicorn = "^23.0.0"
 
 [build-system]
 requires = ["poetry-core"]

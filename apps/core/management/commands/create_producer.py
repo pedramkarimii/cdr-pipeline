@@ -1,44 +1,64 @@
-from django.core.management.base import BaseCommand
-import time
+from time import monotonic
 
-from apps.cdr.tasks.tasks_producer import RabbitMQProducer, generate_cdr
+from django.core.management.base import BaseCommand, CommandError
+
+from apps.cdr.tasks.tasks_main import generate_cdr
+from apps.cdr.tasks.tasks_producer import RabbitMQProducer
 
 
 class Command(BaseCommand):
-    """Django management command to send random CDRs to RabbitMQ."""
-    help = 'Send random CDRs to RabbitMQ'
+    help = "Publish generated CDR messages to RabbitMQ."
 
     def add_arguments(self, parser):
-        """Define custom command arguments."""
         parser.add_argument(
-            '--num_messages',
+            "--num-messages",
             type=int,
-            default=500,
-            help='Number of CDRs to send',
+            default=100,
+            help="Number of CDR messages to publish.",
+        )
+        parser.add_argument(
+            "--queue-prefix",
+            default="cdr_queue",
+            help="RabbitMQ queue prefix.",
+        )
+        parser.add_argument(
+            "--shard-count",
+            type=int,
+            default=2,
+            help="Number of queue shards.",
         )
 
     def handle(self, *args, **options):
-        """Main execution method to send messages to RabbitMQ."""
-        producer = RabbitMQProducer(queue_prefix='cdr_queue', shard_count=2)
-        producer.connect()
+        num_messages = options["num_messages"]
+        shard_count = options["shard_count"]
 
-        message_count = 0
-        start_time = time.time()
+        if num_messages < 1:
+            raise CommandError("--num-messages must be at least 1.")
+        if shard_count < 1:
+            raise CommandError("--shard-count must be at least 1.")
+
+        producer = RabbitMQProducer(
+            queue_prefix=options["queue_prefix"],
+            shard_count=shard_count,
+        )
+
+        if not producer.connect():
+            raise CommandError("Could not connect to RabbitMQ.")
+
+        started_at = monotonic()
+        published = 0
 
         try:
-            num_messages = options['num_messages']
             for _ in range(num_messages):
-                cdr = generate_cdr()
-                producer.publish_message(cdr)
-                message_count += 1
-
-                if message_count % 100 == 0:
-                    elapsed_time = time.time() - start_time
-                    self.stdout.write(f"Sent {message_count} messages. Time taken: {elapsed_time:.2f} seconds.")
-                    time.sleep(0.22)
-        except KeyboardInterrupt:
-            self.stdout.write(f"Process interrupted. {message_count} messages sent.")
+                if not producer.publish_message(generate_cdr()):
+                    raise CommandError("Could not publish a CDR message.")
+                published += 1
         finally:
             producer.close_connection()
-            elapsed_time = time.time() - start_time
-            self.stdout.write(f"Total messages sent: {message_count}. Time taken: {elapsed_time:.2f} seconds.")
+
+        elapsed = monotonic() - started_at
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Published {published} CDR messages in {elapsed:.2f} seconds."
+            )
+        )

@@ -1,32 +1,49 @@
-import os
 from pathlib import Path
-from decouple import config  # noqa
-from datetime import timedelta
 
-USE_TZ = True
-USE_I18N = True
-LANGUAGE_CODE = "en-us"
-ROOT_URLCONF = "config.urls"
-WSGI_APPLICATION = "config.wsgi.application"
-TIME_ZONE = config("TIME_ZONE", default="UTC")
-DEBUG = config("DEBUG", cast=bool, default=True)
+from decouple import config
+
+
 BASE_DIR = Path(__file__).resolve().parent.parent
-APP_DIR = BASE_DIR / "apps"
-DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-SECRET_KEY = config("SECRET_KEY", default="secret-key-!!!")
-ALLOWED_HOSTS = (
-    ["*"]
-    if DEBUG
-    else config(
-        "ALLOWED_HOSTS", cast=lambda host: [h.strip() for h in host.split(",") if h]
-    )
+APPLICATIONS = ["cdr", "core"]
+
+
+def csv(name: str, default: str = "") -> list[str]:
+    return [
+        value.strip()
+        for value in config(name, default=default).split(",")
+        if value.strip()
+    ]
+
+
+SECRET_KEY = config("SECRET_KEY")
+DEBUG = config("DEBUG", cast=bool, default=False)
+TIME_ZONE = config("TIME_ZONE", default="Asia/Tehran")
+LANGUAGE_CODE = "en-us"
+USE_I18N = True
+USE_TZ = True
+
+ALLOWED_HOSTS = csv("ALLOWED_HOSTS", "localhost,127.0.0.1")
+CSRF_TRUSTED_ORIGINS = csv(
+    "CSRF_TRUSTED_ORIGINS",
+    "http://localhost:8082,http://127.0.0.1:8082",
 )
 
-AUTH_PASSWORD_VALIDATORS = [
-    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
-    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
-    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
-    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+ROOT_URLCONF = "config.urls"
+WSGI_APPLICATION = "config.wsgi.application"
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+INSTALLED_APPS = [
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+    "rest_framework",
+    "rest_framework_simplejwt",
+    "drf_spectacular",
+    "django_elasticsearch_dsl",
+    *[f"apps.{app}" for app in APPLICATIONS],
 ]
 
 MIDDLEWARE = [
@@ -38,13 +55,11 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
-if DEBUG:
-    MIDDLEWARE.append('apps.core.middlewares.LogRequiredMiddleware')
 
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [BASE_DIR / ""],
+        "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -57,146 +72,128 @@ TEMPLATES = [
     },
 ]
 
-# THROTTLE_CONFIG
-THROTTLE_CONFIG = {
-    'default': {
-        'rate': '5/m',  # 5 requests per 5 minutes
+AUTH_PASSWORD_VALIDATORS = [
+    {
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
     },
-    'admin': {
-        'rate': '20/m',  # 20 requests per 5 minutes
+    {
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
     },
-}
-SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=5),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
-    "ROTATE_REFRESH_TOKENS": False,
-    "BLACKLIST_AFTER_ROTATION": False,
-    "UPDATE_LAST_LOGIN": False,
-
-    "ALGORITHM": "HS256",
-    "SIGNING_KEY": SECRET_KEY,
-
-    "AUTH_HEADER_TYPES": ("Bearer",),
-    "AUTH_HEADER_NAME": "HTTP_AUTHORIZATION",
-    "USER_ID_FIELD": "id",
-    "USER_ID_CLAIM": "user_id",
-    "USER_AUTHENTICATION_RULE": "rest_framework_simplejwt.authentication.default_user_authentication_rule",
-
-    "AUTH_TOKEN_CLASSES": ("rest_framework_simplejwt.tokens.AccessToken",),
-    "TOKEN_TYPE_CLAIM": "token_type",
-    "TOKEN_USER_CLASS": "rest_framework_simplejwt.models.TokenUser",
-
-    "SLIDING_TOKEN_REFRESH_EXP_CLAIM": "refresh_exp",
-    "SLIDING_TOKEN_LIFETIME": timedelta(minutes=5),
-    "SLIDING_TOKEN_REFRESH_LIFETIME": timedelta(days=1),
-
-    "TOKEN_OBTAIN_SERIALIZER": "rest_framework_simplejwt.serializers.TokenObtainPairSerializer",
-    "TOKEN_REFRESH_SERIALIZER": "rest_framework_simplejwt.serializers.TokenRefreshSerializer",
-    "TOKEN_VERIFY_SERIALIZER": "rest_framework.simplejwt.serializers.TokenVerifySerializer",
-    "TOKEN_BLACKLIST_SERIALIZER": "rest_framework_simplejwt.serializers.TokenBlacklistSerializer",
-    "SLIDING_TOKEN_OBTAIN_SERIALIZER": "rest_framework.simplejwt.serializers.TokenObtainSlidingSerializer",
-    "SLIDING_TOKEN_REFRESH_SERIALIZER": "rest_framework.simplejwt.serializers.TokenRefreshSlidingSerializer",
-}
+    {
+        "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
+    },
+    {
+        "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
+    },
+]
 
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
-        'rest_framework.authentication.TokenAuthentication',
-        'rest_framework.authentication.SessionAuthentication',
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "rest_framework.authentication.SessionAuthentication",
     ],
-    'DEFAULT_THROTTLING_CLASSES': [
-        'apps.account.throttling.CustomThrottle',
-    ],
-    'DEFAULT_THROTTLE_RATES': {
-        'default': '5/m',
-        'admin': '20/m',
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_THROTTLE_RATES": {
+        "default": "60/min",
+        "admin": "120/min",
     },
-    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
+
 SPECTACULAR_SETTINGS = {
-    'TITLE': 'AVA',
-    'DESCRIPTION': 'CDR Pipeline is a scalable and reliable system for ingesting, processing, and searching Call Detail'
-                   ' Records (CDRs).',
-    'VERSION': '1.0.0',
+    "TITLE": "CDR Pipeline API",
+    "DESCRIPTION": "Call Detail Record ingestion, processing, and search API.",
+    "VERSION": "1.0.0",
 }
-# Applications
-APPLICATIONS = ["cdr", "core"]
 
-# Serving
-STATIC_URL = "storage/static/"
-MEDIA_URL = "media/"
-MEDIA_ROOT = BASE_DIR / "storage/media"
-
-# Logging
-LOG_FILE_PATH = config("LOG_FILE_PATH")
-
-# RabbitMQ settings for Celery
-CELERY_BROKER_URL = config("CELERY_BROKER_URL")
-CELERY_ACCEPT_CONTENT = config("CELERY_ACCEPT_CONTENT")
-CELERY_TASK_SERIALIZER = config("CELERY_TASK_SERIALIZER")
-
-# Elasticsearch Settings
-ELASTICSEARCH_DSL = {
-    'default': {
-        'hosts': config('ELASTICSEARCH_HOST', default='http://localhost:9200')
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": config("DB_NAME", default="cdr"),
+        "USER": config("DB_USER", default="cdr"),
+        "PASSWORD": config("DB_PASSWORD", default="cdr"),
+        "HOST": config("DB_HOST", default="db"),
+        "PORT": config("DB_PORT", default="5432"),
+        "CONN_MAX_AGE": config("DB_CONN_MAX_AGE", cast=int, default=60),
     },
 }
 
-# Mode Handling:
-if DEBUG:
+REDIS_URL = config(
+    "REDIS_URL",
+    default="redis://{}:{}/0".format(
+        config("REDIS_HOST", default="redis"),
+        config("REDIS_PORT", default="6379"),
+    ),
+)
 
-    INSTALLED_APPS = [
-        "django.contrib.admin",
-        "django.contrib.auth",
-        "django.contrib.contenttypes",
-        "django.contrib.sessions",
-        "django.contrib.messages",
-        "django.contrib.staticfiles",
-        # Third-party
-        "rest_framework",
-        "rest_framework.authtoken",
-        "drf_spectacular",
-        "django_elasticsearch_dsl",
-        # Application
-        *list(map(lambda app: f"apps.{app}", APPLICATIONS)),
-    ]
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.postgresql",
-            "NAME": config("DB_NAME"),
-            "USER": config("DB_USER"),
-            "PASSWORD": config("DB_PASSWORD"),
-            "HOST": config("DB_HOST"),
-            "PORT": config("DB_PORT"),
-        }
-    }
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": REDIS_URL,
+    },
+}
 
-    CACHES = {
-        "default": {
-            "BACKEND": "django.core.cache.backends.filebased.FileBasedCache",
-            "LOCATION": BASE_DIR / "utility/cache",
-        }
-    }
+CELERY_BROKER_URL = config(
+    "CELERY_BROKER_URL",
+    default="amqp://{}:{}@{}:{}/%2F".format(
+        config("RABBITMQ_USER", default="guest"),
+        config("RABBITMQ_PASSWORD", default="guest"),
+        config("RABBITMQ_HOST", default="rabbitmq"),
+        config("RABBITMQ_PORT", default="5672"),
+    ),
+)
+CELERY_RESULT_BACKEND = config(
+    "CELERY_RESULT_BACKEND",
+    default="redis://{}:{}/1".format(
+        config("REDIS_HOST", default="redis"),
+        config("REDIS_PORT", default="6379"),
+    ),
+)
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 
-else:
-    CSRF_TRUSTED_ORIGINS = config("CSRF_TRUSTED_ORIGINS")
-    STATIC_ROOT = BASE_DIR / "storage/static/"
-    INSTALLED_APPS = [
-        "django.contrib.auth",
-        "django.contrib.contenttypes",
-        # Third-party
-        "rest_framework",
-        "rest_framework.authtoken",
-        "django_elasticsearch_dsl",
-        # Application
-        *list(map(lambda app: f"apps.{app}", APPLICATIONS)),
-    ]
-    REDIS_URL = f"redis://{config('REDIS_HOST')}:{config('REDIS_PORT')}"
+ELASTICSEARCH_HOST = config(
+    "ELASTICSEARCH_HOST",
+    default="http://elasticsearch:9200",
+)
+ELASTICSEARCH_DSL = {
+    "default": {
+        "hosts": ELASTICSEARCH_HOST,
+    },
+}
 
-    CACHES = {
-        "default": {
-            "BACKEND": "django.core.cache.backends.redis.RedisCache",
-            "LOCATION": REDIS_URL,
-        }
-    }
-    SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
+STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "storage" / "static_collected"
+STATICFILES_DIRS = [BASE_DIR / "storage" / "static"]
+
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "storage" / "media"
+
+LOG_LEVEL = config("API_LOG_LEVEL", default="INFO")
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": LOG_LEVEL,
+    },
+}
+
+X_FRAME_OPTIONS = "DENY"
+SECURE_CONTENT_TYPE_NOSNIFF = True
+
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_SSL_REDIRECT = config("SECURE_SSL_REDIRECT", cast=bool, default=True)
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = config("SECURE_HSTS_PRELOAD", cast=bool, default=False)

@@ -1,78 +1,99 @@
-from apps.core import os_setting_elastic  # noqa
 import json
-from django.utils.dateparse import parse_datetime
-from apps.cdr.models import Cdr
+import logging
+
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
+
+from apps.cdr.models import Cdr
 from apps.cdr.tasks.tasks_main import RabbitMQMain
 
 
+logger = logging.getLogger(__name__)
+
+
 class RabbitMQConsumer(RabbitMQMain):
-    """
-    This class is used for consuming messages from RabbitMQ queues, processing them into Call Detail Records (CDRs),
-    and saving them to a database.
-    """
+    def connect(self) -> bool:
+        if not super().connect():
+            return False
 
-    def connect(self):
-        """Establish connection to RabbitMQ."""
-        super().connect()
         for shard_id in range(self.shard_count):
-            self.channel.basic_consume(queue=f"{self.queue_prefix}_{shard_id}",
-                                       on_message_callback=self.process_message, auto_ack=False)
+            self.channel.basic_consume(
+                queue=f"{self.queue_prefix}_{shard_id}",
+                on_message_callback=self.process_message,
+                auto_ack=False,
+            )
+        return True
 
-    def process_message(self, ch, method, properties, body):  # noqa
-        """
-        This method will be called for each message consumed from the RabbitMQ queue.
-        """
+    def process_message(self, ch, method, properties, body):
         try:
             message = json.loads(body)
-            print(f"Received message: {message}")
             cdr_data = self._parse_message(message)
             self._save_cdr(cdr_data)
+        except (TypeError, ValueError, KeyError) as exc:
+            logger.warning("Discarding invalid CDR message: %s", exc)
+            ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+            return
+        except Exception:
+            logger.exception("CDR persistence failed; message will be retried.")
+            ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+            return
 
-            ch.basic_ack(delivery_tag=method.delivery_tag)
-            print(f"Processed message: {cdr_data}")
-        except Exception as e:
-            print(f"Error processing message: {e}. Skipping message: {body}")
-            ch.basic_ack(delivery_tag=method.delivery_tag)
+        ch.basic_ack(delivery_tag=method.delivery_tag)
+        logger.info("Processed CDR from %s", cdr_data["src_number"])
 
-    def _parse_message(self, message):  # noqa
-        """
-        This method parses the message and converts it into the CDR format.
-        """
-        timestamp = parse_datetime(message['timestamp'])
-        timestamp = timezone.make_aware(timestamp, timezone.get_current_timezone())
+    def _parse_datetime(self, value):
+        parsed = parse_datetime(value)
+        if parsed is None:
+            raise ValueError("Invalid ISO-8601 datetime.")
 
-        start_time = parse_datetime(message.get('start_time', message['timestamp']))
-        start_time = timezone.make_aware(start_time, timezone.get_current_timezone())
+        if timezone.is_naive(parsed):
+            return timezone.make_aware(parsed, timezone.get_current_timezone())
 
-        end_time = parse_datetime(message.get('end_time', message['timestamp']))
-        end_time = timezone.make_aware(end_time, timezone.get_current_timezone())
+        return parsed
 
-        cdr_data = {
-            'src_number': message['src_number'],
-            'dest_number': message['dest_number'],
-            'call_duration': message['call_duration'],
-            'call_successful': message['call_successful'],
-            'timestamp': timestamp,
-            'start_time': start_time,
-            'end_time': end_time,
+    def _parse_message(self, message: dict) -> dict:
+        required = {
+            "src_number",
+            "dest_number",
+            "call_duration",
+            "call_successful",
+            "timestamp",
         }
-        return cdr_data
+        missing = sorted(required.difference(message))
+        if missing:
+            raise ValueError(
+                "Missing required CDR fields: {}".format(", ".join(missing))
+            )
 
-    def _save_cdr(self, cdr_data):  # noqa
-        """
-        Save the CDR data to the database.
-        """
-        Cdr.objects.create(**cdr_data)
+        if not isinstance(message["call_successful"], bool):
+            raise ValueError("call_successful must be a boolean.")
 
-    def start_consuming(self):
-        """Start consuming messages."""
+        return {
+            "src_number": message["src_number"],
+            "dest_number": message["dest_number"],
+            "call_duration": message["call_duration"],
+            "call_successful": message["call_successful"],
+            "timestamp": self._parse_datetime(message["timestamp"]),
+            "start_time": self._parse_datetime(
+                message.get("start_time", message["timestamp"])
+            ),
+            "end_time": self._parse_datetime(
+                message.get("end_time", message["timestamp"])
+            ),
+        }
+
+    def _save_cdr(self, cdr_data: dict) -> None:
+        cdr = Cdr(**cdr_data)
+        cdr.full_clean()
+        cdr.save()
+
+    def start_consuming(self) -> None:
+        if self.channel is None:
+            raise RuntimeError("RabbitMQ channel is not connected.")
+
         try:
             self.channel.start_consuming()
-            print("Consumer started consuming messages...")
         except KeyboardInterrupt:
-            print("Consumer interrupted by user.")
-        except Exception as e:
-            print(f"Error while consuming: {e}")
+            logger.info("Consumer interrupted.")
         finally:
             self.close_connection()
